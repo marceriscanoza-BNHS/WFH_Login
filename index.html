@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Logger - PH Time</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main Container -->
+    <div id="app" class="w-full max-w-md glass rounded-3xl shadow-2xl overflow-hidden border border-white">
+        
+        <!-- Header -->
+        <div class="bg-blue-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">Work Logger</h1>
+            <p id="header-subtitle" class="text-blue-100 text-sm">Attendance System</p>
+        </div>
+
+        <!-- Content Area -->
+        <div class="p-8">
+            
+            <!-- PHASE 1: User Registration -->
+            <div id="phase-1" class="hidden space-y-6">
+                <div class="space-y-2 text-center">
+                    <h2 class="text-xl font-semibold text-slate-800">Identify Yourself</h2>
+                    <p class="text-slate-500 text-sm">Please enter your details to continue.</p>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">Full Name</label>
+                        <input type="text" id="reg-name" placeholder="Juan Dela Cruz" class="mt-1 block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">Position</label>
+                        <input type="text" id="reg-pos" placeholder="Project Manager" class="mt-1 block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all">
+                        <p id="pos-error" class="text-red-500 text-xs mt-1 hidden">Position must be at least 4 characters.</p>
+                    </div>
+                    <button onclick="handleRegistration()" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transform active:scale-95 transition-all">
+                        Enter User
+                    </button>
+                </div>
+            </div>
+
+            <!-- PHASE 2: Login / Clock In -->
+            <div id="phase-2" class="hidden space-y-8 text-center">
+                <div class="space-y-1">
+                    <p class="text-slate-400 text-sm uppercase tracking-widest font-semibold">Welcome Back</p>
+                    <h2 id="display-name" class="text-2xl font-bold text-slate-800">User Name</h2>
+                    <p id="display-pos" class="text-blue-600 font-medium italic">Position</p>
+                    <button onclick="clearUser()" class="text-xs text-slate-400 underline hover:text-red-500 transition-colors">Not you? Switch account</button>
+                </div>
+
+                <button onclick="handleLogin()" class="group relative w-48 h-48 mx-auto bg-green-500 hover:bg-green-600 text-white rounded-full shadow-xl flex items-center justify-center transform active:scale-90 transition-all">
+                    <div class="text-center">
+                        <span class="block text-2xl font-black">LOG IN</span>
+                        <span class="text-xs opacity-80">Click to start work</span>
+                    </div>
+                </button>
+
+                <div class="space-y-2">
+                    <p class="text-slate-500 text-sm font-medium">Philippine Standard Time</p>
+                    <div id="clock" class="text-4xl font-mono font-bold text-slate-800 tracking-tighter">00:00:00</div>
+                    <div id="date" class="text-slate-400 text-sm">January 01, 2024</div>
+                </div>
+            </div>
+
+            <!-- PHASE 3: Logout / Accomplishments -->
+            <div id="phase-3" class="hidden space-y-6">
+                <div class="text-center">
+                    <h2 class="text-xl font-bold text-slate-800">Currently Working</h2>
+                    <p class="text-slate-500 text-sm">Shift started at: <span id="start-time-display" class="font-semibold text-blue-600">--:--</span></p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Things Accomplished Today</label>
+                        <textarea id="accomplishments" rows="5" placeholder="• Completed report&#10;• Attended meeting&#10;• Fixed CSS bugs..." class="block w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition-all"></textarea>
+                    </div>
+                    
+                    <button id="logout-btn" onclick="handleLogout()" class="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg transform active:scale-95 transition-all">
+                        LOG OUT
+                    </button>
+                </div>
+            </div>
+
+            <!-- Message Overlay -->
+            <div id="status-msg" class="mt-4 p-3 rounded-lg text-center hidden"></div>
+
+        </div>
+    </div>
+
+    <script>
+        /**
+         * CONFIGURATION
+         * Replace this URL with your Google Apps Script Web App URL
+         */
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxqOQujEeZIEIHNoeaMNlvASf_NXwegHPcmVpKDV1sVEj0qwlpXNWtDMoI6K6GCHyJ8Q/exec"; 
+
+        // State Management
+        let currentUser = JSON.parse(localStorage.getItem('user_info')) || null;
+        let loginSession = localStorage.getItem('login_session') || null;
+
+        function init() {
+            updateClock();
+            setInterval(updateClock, 1000);
+            renderView();
+        }
+
+        function renderView() {
+            document.getElementById('phase-1').classList.add('hidden');
+            document.getElementById('phase-2').classList.add('hidden');
+            document.getElementById('phase-3').classList.add('hidden');
+
+            if (!currentUser) {
+                document.getElementById('phase-1').classList.remove('hidden');
+                document.getElementById('header-subtitle').innerText = "Account Setup";
+            } else if (!loginSession) {
+                document.getElementById('phase-2').classList.remove('hidden');
+                document.getElementById('display-name').innerText = currentUser.name;
+                document.getElementById('display-pos').innerText = currentUser.position;
+                document.getElementById('header-subtitle').innerText = "Attendance Ready";
+            } else {
+                document.getElementById('phase-3').classList.remove('hidden');
+                document.getElementById('start-time-display').innerText = loginSession;
+                document.getElementById('header-subtitle').innerText = "On Shift";
+            }
+        }
+
+        function getPHT() {
+            return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"}));
+        }
+
+        function updateClock() {
+            const now = getPHT();
+            const timeString = now.toLocaleTimeString('en-US', { hour12: true });
+            const dateString = now.toLocaleDateString('en-US', { 
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+            });
+            
+            const clockEl = document.getElementById('clock');
+            const dateEl = document.getElementById('date');
+            if(clockEl) clockEl.innerText = timeString;
+            if(dateEl) dateEl.innerText = dateString;
+        }
+
+        function handleRegistration() {
+            const name = document.getElementById('reg-name').value.trim();
+            const pos = document.getElementById('reg-pos').value.trim();
+            const errorEl = document.getElementById('pos-error');
+
+            if (!name || !pos) {
+                showMessage("Please fill in all fields.", "error");
+                return;
+            }
+
+            if (pos.length < 4) {
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            currentUser = { name, position: pos };
+            localStorage.setItem('user_info', JSON.stringify(currentUser));
+            renderView();
+            showMessage("User registered!", "success");
+        }
+
+        function clearUser() {
+            localStorage.removeItem('user_info');
+            currentUser = null;
+            renderView();
+        }
+
+        async function handleLogin() {
+            const loginTime = getPHT().toLocaleString('en-US', { timeZone: "Asia/Manila" });
+            
+            showMessage("Logging in...", "info");
+            const success = await sendDataToSheets("LOGIN", "");
+            
+            if (success) {
+                loginSession = loginTime;
+                localStorage.setItem('login_session', loginTime);
+                renderView();
+                showMessage("Logged in successfully", "success");
+            } else {
+                showMessage("Network error. Try again.", "error");
+            }
+        }
+
+        async function handleLogout() {
+            const tasks = document.getElementById('accomplishments').value.trim();
+            if (!tasks) {
+                showMessage("Please list your accomplishments.", "error");
+                return;
+            }
+
+            const btn = document.getElementById('logout-btn');
+            btn.disabled = true;
+            btn.innerText = "SAVING...";
+
+            const success = await sendDataToSheets("LOGOUT", tasks);
+            
+            if(success) {
+                localStorage.removeItem('login_session');
+                loginSession = null;
+                document.getElementById('accomplishments').value = "";
+                renderView();
+                showMessage("Logged out. Sheet updated!", "success");
+            } else {
+                showMessage("Failed to save. Try again.", "error");
+            }
+            btn.disabled = false;
+            btn.innerText = "LOG OUT";
+        }
+
+        async function sendDataToSheets(actionType, notes) {
+            if (!GOOGLE_SCRIPT_URL) {
+                console.log("No URL - Simulating success");
+                return true;
+            }
+
+            try {
+                // We use 'no-cors' mode as Apps Script doesn't return CORS headers easily
+                // but we can still send the data.
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    cache: 'no-cache',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: currentUser.name,
+                        position: currentUser.position,
+                        type: actionType,
+                        time: getPHT().toLocaleString('en-US', { timeZone: "Asia/Manila" }),
+                        accomplishments: notes
+                    })
+                });
+                return true;
+            } catch (error) {
+                console.error("Fetch error:", error);
+                return false;
+            }
+        }
+
+        function showMessage(text, type) {
+            const msgEl = document.getElementById('status-msg');
+            msgEl.innerText = text;
+            msgEl.className = `mt-4 p-3 rounded-lg text-center font-medium ${
+                type === 'success' ? 'bg-green-100 text-green-700' : 
+                type === 'error' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+            }`;
+            msgEl.classList.remove('hidden');
+            if (type !== 'info') setTimeout(() => msgEl.classList.add('hidden'), 4000);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
